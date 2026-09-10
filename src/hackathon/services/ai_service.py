@@ -4,35 +4,49 @@ import os
 from typing import Any
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 from hackathon.models.schemas import AIReport
+
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+MODEL = "gemini-3.6-flash"
+BASE_URL = "https://backend.sovereigneg.com/v1"
 
-SYSTEM_PROMPT = """Act as a senior software architect. Analyze only the provided \
-repository evidence and do not invent information that is not supported by it.
 
-Based solely on the structured repository facts given to you, determine:
+SYSTEM_PROMPT = """Act as a senior software architect.
+
+Analyze only the provided repository evidence.
+Do not invent information that is not supported by the evidence.
+
+Based solely on the structured repository facts, determine:
+
 - the project's purpose and a concise summary
 - its technology stack and architecture
 - its key components
 - its strengths, weaknesses, and risks
 - concrete recommendations
 
-Also produce a list of issues. Each issue must include a severity \
-(one of: critical, high, medium, low), a title, the relevant file, the \
-evidence from the repository facts that supports it, and a recommendation.
+Also produce a list of issues.
 
-Finally, produce a health_score from 0 to 100 and a concise final_assessment.
+Each issue must include:
+- severity: critical, high, medium, or low
+- title
+- relevant file
+- evidence from the repository facts
+- recommendation
 
-Respond with JSON only, matching the provided schema exactly. Do not fabricate \
-files, dependencies, or facts that are not present in the evidence."""
+Finally, produce:
+- health_score from 0 to 100
+- concise final_assessment
+
+Respond with JSON only.
+Do not fabricate files, dependencies, or facts that are not present
+in the repository evidence.
+"""
 
 
 class AIServiceError(RuntimeError):
@@ -40,33 +54,54 @@ class AIServiceError(RuntimeError):
 
 
 def generate_report(analysis_result: dict[str, Any]) -> dict[str, Any]:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise AIServiceError("GEMINI_API_KEY is not set. Add it to a .env file.")
+    api_key = os.getenv("SOVEREIGNEG_API_KEY")
 
-    client = genai.Client(api_key=api_key)
+    if not api_key:
+        raise AIServiceError(
+            "SOVEREIGNEG_API_KEY is not set. Add it to your .env file."
+        )
+
+    client = OpenAI(
+        base_url=BASE_URL,
+        api_key=api_key,
+    )
 
     try:
-        response = client.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=[
-                SYSTEM_PROMPT,
-                "Repository evidence (structured JSON facts):",
-                json.dumps(analysis_result, default=str),
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Repository evidence "
+                        "(structured JSON facts):\n\n"
+                        + json.dumps(analysis_result, default=str)
+                    ),
+                },
             ],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_json_schema=AIReport.model_json_schema(),
-            ),
         )
-    except Exception as exc:  # noqa: BLE001 - surfaced as a clean service error
-        # The provider message can carry request details, so log it server-side
-        # and keep the client-facing error generic.
-        logger.exception("Gemini request failed")
-        raise AIServiceError("The AI provider request failed.") from exc
 
-    if not response.text:
-        raise AIServiceError("Gemini returned an empty response.")
+    except Exception as exc:
+        logger.exception("AI request failed")
+        raise AIServiceError(
+            "The AI provider request failed."
+        ) from exc
 
-    report = AIReport.model_validate_json(response.text)
+    content = response.choices[0].message.content
+
+    if not content:
+        raise AIServiceError("AI returned an empty response.")
+
+    try:
+        report = AIReport.model_validate_json(content)
+    except Exception as exc:
+        logger.exception("AI returned invalid JSON")
+        raise AIServiceError(
+            "AI returned an invalid report."
+        ) from exc
+
     return report.model_dump()

@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from google.genai import errors as genai_errors
 
 from hackathon.models.schemas import AIReport
 from hackathon.services import ai_service
@@ -138,3 +139,81 @@ def test_health_score_out_of_range_is_rejected(fake_gemini):
 
     with pytest.raises(Exception):
         generate_report({"statistics": {}})
+
+
+class _FlakyModels:
+    """Raises a transient ServerError a set number of times, then succeeds."""
+
+    def __init__(self, fail_times: int, text: str) -> None:
+        self.remaining_failures = fail_times
+        self.calls = 0
+        self._text = text
+
+    def generate_content(self, **kwargs):
+        self.calls += 1
+        if self.remaining_failures > 0:
+            self.remaining_failures -= 1
+            raise genai_errors.ServerError(
+                503, {"error": {"message": "overloaded", "status": "UNAVAILABLE"}}
+            )
+        return _FakeResponse(self._text)
+
+
+class _FlakyClient:
+    def __init__(self, models: "_FlakyModels") -> None:
+        self.models = models
+
+
+@pytest.fixture
+def instant_retries(monkeypatch):
+    # Neutralise tenacity's backoff sleep so retry tests run instantly.
+    monkeypatch.setattr(ai_service._generate_content.retry, "sleep", lambda *_: None)
+
+
+def test_transient_503_is_retried_then_succeeds(monkeypatch, instant_retries):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+    models = _FlakyModels(fail_times=2, text=json.dumps(VALID_REPORT))
+    monkeypatch.setattr(
+        ai_service.genai, "Client", lambda api_key=None: _FlakyClient(models)
+    )
+
+    report = generate_report({"statistics": {}})
+
+    assert report["health_score"] == 72
+    assert models.calls == 3  # 2 failures + 1 success
+
+
+def test_exhausted_retries_report_overload_without_leaking(monkeypatch, instant_retries):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+    models = _FlakyModels(fail_times=99, text=json.dumps(VALID_REPORT))
+    monkeypatch.setattr(
+        ai_service.genai, "Client", lambda api_key=None: _FlakyClient(models)
+    )
+
+    with pytest.raises(AIServiceError) as excinfo:
+        generate_report({"statistics": {}})
+
+    assert "overloaded" in str(excinfo.value).lower()
+    assert models.calls == ai_service._MAX_ATTEMPTS  # capped, not infinite
+
+
+def test_non_transient_error_is_not_retried(monkeypatch, instant_retries):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+    calls = {"n": 0}
+
+    class _BadRequestModels:
+        def generate_content(self, **kwargs):
+            calls["n"] += 1
+            raise genai_errors.ClientError(400, {"error": {"message": "bad request"}})
+
+    monkeypatch.setattr(
+        ai_service.genai,
+        "Client",
+        lambda api_key=None: type("C", (), {"models": _BadRequestModels()})(),
+    )
+
+    with pytest.raises(AIServiceError):
+        generate_report({"statistics": {}})
+
+    assert calls["n"] == 1  # 400 is not retryable
+

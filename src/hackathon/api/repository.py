@@ -1,8 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from hackathon.models.schemas import RepositoryAnalyzeRequest, RepositoryAnalyzeResponse
-from hackathon.services import ai_service_stub as ai_service
-from hackathon.services import static_analyzer_stub as static_analyzer
+from hackathon.services.ai_service import AIServiceError, generate_report
 from hackathon.services.github_service import (
     InvalidRepositoryUrlError,
     RepositoryCloneError,
@@ -10,6 +9,7 @@ from hackathon.services.github_service import (
     cleanup_repository,
     validate_github_url,
 )
+from hackathon.services.static_analyzer import analyze_repository as run_static_analysis
 
 router = APIRouter(prefix="/repository", tags=["repository"])
 
@@ -27,8 +27,10 @@ def analyze_repository(request: RepositoryAnalyzeRequest) -> RepositoryAnalyzeRe
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        static_analysis = static_analyzer.analyze(repo_path)
-        ai_review = ai_service.generate_report(static_analysis)
+        static_analysis = run_static_analysis(repo_path)
+        ai_review = generate_report(static_analysis)
+    except AIServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Analysis failed.") from exc
     finally:

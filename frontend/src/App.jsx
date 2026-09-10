@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Code2, GitBranch, Orbit, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  Code2,
+  GitBranch,
+  Orbit,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 
 import RepoForm from "./components/RepoForm.jsx";
 import HealthGauge from "./components/HealthGauge.jsx";
@@ -47,17 +53,15 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-
       <header className="navbar">
         <a className="brand" href="/" aria-label="CodeScope home">
           <div className="brand-icon">
-            <Orbit size={21} />
+            <Orbit size={20} />
           </div>
+
           <div>
             <strong>CodeScope</strong>
-            <span>AI Codebase Auditor</span>
+            <span>Repository Auditor</span>
           </div>
         </a>
       </header>
@@ -83,12 +87,14 @@ export default function App() {
 
         <div className="search-stage">
           <span className="search-label">GitHub repository</span>
+
           <RepoForm
             value={repoUrl}
             onChange={setRepoUrl}
             onSubmit={handleSubmit}
             loading={loading}
           />
+
           <p className="search-hint">
             Example: https://github.com/owner/repository
           </p>
@@ -98,9 +104,20 @@ export default function App() {
 
         {!analysis && !loading && (
           <div className="feature-strip">
-            <div><Code2 size={16} /> Static analysis</div>
-            <div><GitBranch size={16} /> Architecture mapping</div>
-            <div><ShieldCheck size={16} /> Engineering risk review</div>
+            <div>
+              <Code2 size={16} />
+              Static analysis
+            </div>
+
+            <div>
+              <GitBranch size={16} />
+              Architecture mapping
+            </div>
+
+            <div>
+              <ShieldCheck size={16} />
+              Engineering risk review
+            </div>
           </div>
         )}
 
@@ -109,6 +126,7 @@ export default function App() {
             <div className="scanner">
               <div className="scanner-line" />
             </div>
+
             <div>
               <strong>Reading the repository…</strong>
               <p>
@@ -120,37 +138,46 @@ export default function App() {
       </section>
 
       {analysis && (
-        <section className="dashboard">
-          <section className="panel summary-panel">
-            <div className="summary-kicker">Repository overview</div>
-            <h2>{analysis.projectName}</h2>
-            <p className="purpose">{analysis.purpose}</p>
-            <p className="summary-text">{analysis.summary}</p>
-          </section>
+        <section className="results-shell">
+          <section className="dashboard">
+            <section className="panel summary-panel wide-panel">
+              <div className="summary-kicker">Repository overview</div>
 
-          <HealthGauge score={analysis.healthScore} />
-
-          <RepositoryVisuals
-            staticAnalysis={analysis.staticAnalysis}
-            technologies={analysis.technologies}
-          />
-
-          <ArchitectureFlow architecture={analysis.architecture} />
-          <TechStack technologies={analysis.technologies} />
-          <Strengths strengths={analysis.strengths} />
-          <KeyComponents components={analysis.components} />
-          <Issues issues={analysis.issues} />
-          <Recommendations recommendations={analysis.recommendations} />
-
-          {analysis.finalAssessment && (
-            <section className="panel final-assessment wide-panel">
-              <div className="section-heading">
-                <span className="eyebrow">AI conclusion</span>
-                <h2>Final assessment</h2>
-              </div>
-              <p>{analysis.finalAssessment}</p>
+              <h2>{analysis.projectName}</h2>
+              <p className="purpose">{analysis.purpose}</p>
+              <p className="summary-text">{analysis.summary}</p>
             </section>
-          )}
+
+            <HealthGauge score={analysis.healthScore} />
+
+            <TechStack technologies={analysis.technologies} />
+
+            <RepositoryVisuals
+              staticAnalysis={analysis.staticAnalysis}
+              technologies={analysis.technologies}
+            />
+
+            <ArchitectureFlow architecture={analysis.architecture} />
+
+            <Strengths strengths={analysis.strengths} />
+
+            <KeyComponents components={analysis.components} />
+
+            <Issues issues={analysis.issues} />
+
+            <Recommendations recommendations={analysis.recommendations} />
+
+            {analysis.finalAssessment && (
+              <section className="panel final-assessment wide-panel">
+                <div className="section-heading">
+                  <span className="eyebrow">Conclusion</span>
+                  <h2>Final assessment</h2>
+                </div>
+
+                <p>{analysis.finalAssessment}</p>
+              </section>
+            )}
+          </section>
         </section>
       )}
 

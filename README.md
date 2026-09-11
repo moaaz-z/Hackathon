@@ -438,4 +438,4 @@ Built during a hackathon by a 3-person team working on:
 
 ## License
 
-Add your preferred license here.
+Codescope

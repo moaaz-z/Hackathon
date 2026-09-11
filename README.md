@@ -1,4 +1,6 @@
 # CodeScope
+Here is a video explains program functionality:
+https://drive.google.com/file/d/10KP5BKBMVp5opmrAnskeWHRGH5kQu4xe/view?usp=sharing
 
 CodeScope is an AI-powered GitHub repository analyzer that helps developers quickly understand unfamiliar codebases.
 

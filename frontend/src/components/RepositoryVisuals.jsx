@@ -1,6 +1,38 @@
+import {
+  Braces,
+  FileCode2,
+  Files,
+  Languages,
+  Rows3,
+} from "lucide-react";
+import useCountUp from "../hooks/useCountUp.js";
+
+
+function MetricCard({
+  label,
+  value,
+  icon: Icon,
+}) {
+  const animated = useCountUp(value, 800);
+
+  return (
+    <div className="metric-card metric-card-animated">
+      <div className="metric-icon">
+        <Icon size={16} />
+      </div>
+
+      <span>{label}</span>
+
+      <strong>
+        {Math.round(animated).toLocaleString()}
+      </strong>
+    </div>
+  );
+}
+
+
 export default function RepositoryVisuals({
   staticAnalysis = {},
-  technologies = [],
 }) {
   const statistics =
     staticAnalysis?.statistics || {};
@@ -8,75 +40,189 @@ export default function RepositoryVisuals({
   const python =
     staticAnalysis?.python || {};
 
-  const files =
-    statistics?.total_files ?? 0;
-
-  const lines =
-    statistics?.total_loc ?? 0;
-
-  const functions =
-    Array.isArray(python?.functions)
-      ? python.functions.length
-      : 0;
-
-  const classes =
-    Array.isArray(python?.classes)
-      ? python.classes.length
-      : 0;
+  const c =
+    staticAnalysis?.c || {};
 
   const languages =
     statistics?.languages ||
     staticAnalysis?.languages ||
     {};
 
-  const languageEntries =
-    Object.entries(languages);
+  const entries = Object.entries(languages)
+    .map(([name, data]) => ({
+      name,
+      loc: Number(data?.loc || 0),
+      files: Number(data?.files || 0),
+    }))
+    .sort(
+      (a, b) => b.loc - a.loc
+    );
 
-  const totalLanguageLoc =
-    languageEntries.reduce(
-      (sum, [, data]) =>
-        sum + Number(data?.loc || 0),
+  const dominantLanguage =
+    statistics?.dominant_language ||
+    entries[0]?.name ||
+    "Unknown";
+
+  const files =
+    Number(
+      statistics?.total_files ?? 0
+    );
+
+  const lines =
+    Number(
+      statistics?.source_loc ??
+      statistics?.total_loc ??
       0
     );
 
+  const pythonFunctions =
+    Array.isArray(python?.functions)
+      ? python.functions.length
+      : Number(
+          statistics?.python_function_count ?? 0
+        );
+
+  const pythonClasses =
+    Array.isArray(python?.classes)
+      ? python.classes.length
+      : Number(
+          statistics?.python_class_count ?? 0
+        );
+
+  const cFunctions =
+    Array.isArray(c?.functions)
+      ? c.functions.length
+      : Number(
+          statistics?.c_function_count ?? 0
+        );
+
+  const cHeaders =
+    Number(
+      c?.header_file_count ??
+      statistics?.c_header_count ??
+      0
+    );
+
+  let metrics;
+
+  if (dominantLanguage === "Python") {
+    metrics = [
+      {
+        label: "Files",
+        value: files,
+        icon: Files,
+      },
+      {
+        label: "Source lines",
+        value: lines,
+        icon: Rows3,
+      },
+      {
+        label: "Functions",
+        value: pythonFunctions,
+        icon: Braces,
+      },
+      {
+        label: "Classes",
+        value: pythonClasses,
+        icon: FileCode2,
+      },
+    ];
+  } else if (dominantLanguage === "C") {
+    metrics = [
+      {
+        label: "Files",
+        value: files,
+        icon: Files,
+      },
+      {
+        label: "Source lines",
+        value: lines,
+        icon: Rows3,
+      },
+      {
+        label: "C functions",
+        value: cFunctions,
+        icon: Braces,
+      },
+      {
+        label: "Header files",
+        value: cHeaders,
+        icon: FileCode2,
+      },
+    ];
+  } else {
+    metrics = [
+      {
+        label: "Files",
+        value: files,
+        icon: Files,
+      },
+      {
+        label: "Source lines",
+        value: lines,
+        icon: Rows3,
+      },
+      {
+        label: "Languages",
+        value: entries.length,
+        icon: Languages,
+      },
+      {
+        label: "Source files",
+        value: Number(
+          statistics?.source_files ?? 0
+        ),
+        icon: FileCode2,
+      },
+    ];
+  }
+
+  const totalLoc = entries.reduce(
+    (sum, item) => sum + item.loc,
+    0
+  );
+
   return (
-    <section className="panel repository-visuals">
-      <div className="section-heading">
-        <span className="eyebrow">
-          Repository at a glance
+    <section className="panel repository-visuals interactive-panel">
+      <div className="visuals-heading-row">
+        <div className="section-heading">
+          <span className="eyebrow">
+            Repository at a glance
+          </span>
+
+          <h2>Codebase footprint</h2>
+
+          <p className="muted">
+            Static signals extracted directly
+            from the repository.
+          </p>
+        </div>
+
+        <span className="live-data-pill">
+          <span />
+          {dominantLanguage} dominant
         </span>
-
-        <h2>Codebase footprint</h2>
-
-        <p className="muted">
-          Static signals extracted directly
-          from the repository.
-        </p>
       </div>
 
       <div className="metric-row">
-        <MetricCard
-          label="Files"
-          value={files}
-        />
-
-        <MetricCard
-          label="Lines"
-          value={lines}
-        />
-
-        <MetricCard
-          label="Functions"
-          value={functions}
-        />
-
-        <MetricCard
-          label="Classes"
-          value={classes}
-        />
+        {metrics.map(
+          ({
+            label,
+            value,
+            icon,
+          }) => (
+            <MetricCard
+              key={label}
+              label={label}
+              value={value}
+              icon={icon}
+            />
+          )
+        )}
       </div>
 
-      {languageEntries.length > 0 && (
+      {entries.length > 0 && (
         <div className="language-visual">
           <div className="language-title">
             <strong>
@@ -84,32 +230,32 @@ export default function RepositoryVisuals({
             </strong>
 
             <span>
-              Top {languageEntries.length}
+              {entries.length} detected
             </span>
           </div>
 
           <div className="language-bars">
-            {languageEntries.map(
-              ([language, data]) => {
-                const loc =
-                  Number(data?.loc || 0);
-
+            {entries.map(
+              (item, index) => {
                 const percentage =
-                  totalLanguageLoc > 0
+                  totalLoc > 0
                     ? Math.round(
-                        (loc /
-                          totalLanguageLoc) *
-                          100
+                        (
+                          item.loc /
+                          totalLoc
+                        ) * 100
                       )
                     : 0;
 
                 return (
                   <div
                     className="language-item"
-                    key={language}
+                    key={item.name}
                   >
                     <div className="language-meta">
-                      <span>{language}</span>
+                      <span>
+                        {item.name}
+                      </span>
 
                       <span>
                         {percentage}%
@@ -118,9 +264,12 @@ export default function RepositoryVisuals({
 
                     <div className="language-track">
                       <div
-                        className="language-fill"
+                        className="language-fill language-fill-animated"
                         style={{
-                          width: `${percentage}%`,
+                          width:
+                            `${percentage}%`,
+                          animationDelay:
+                            `${index * 90}ms`,
                         }}
                       />
                     </div>
@@ -132,17 +281,5 @@ export default function RepositoryVisuals({
         </div>
       )}
     </section>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-}) {
-  return (
-    <div className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }

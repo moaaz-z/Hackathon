@@ -18,7 +18,6 @@ import TechStack from "./components/TechStack.jsx";
 import RepositoryVisuals from "./components/RepositoryVisuals.jsx";
 import AuditVisuals from "./components/AuditVisuals.jsx";
 import AnalysisPipeline from "./components/AnalysisPipeline.jsx";
-import BackgroundEffects from "./components/BackgroundEffects.jsx";
 import { Issues, Strengths } from "./components/Findings.jsx";
 import {
   KeyComponents,
@@ -64,7 +63,9 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <BackgroundEffects />
+      <div className="ambient-grid" aria-hidden="true" />
+      <div className="ambient-orb ambient-orb-one" aria-hidden="true" />
+      <div className="ambient-orb ambient-orb-two" aria-hidden="true" />
 
       <header className="navbar">
         <a className="brand" href="/" aria-label="CodeScope home">

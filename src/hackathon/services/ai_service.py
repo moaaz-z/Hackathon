@@ -1,34 +1,33 @@
 import json
 import logging
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from groq import Groq
 from pydantic import ValidationError
 
 from hackathon.models.schemas import AIReport
 
 
-# Load .env from project root
 ROOT_DIR = Path(__file__).resolve().parents[3]
 load_dotenv(ROOT_DIR / ".env")
 
 logger = logging.getLogger(__name__)
 
-
-# Primary model comes from .env.
-# Other models are used automatically if the primary model returns 503.
-PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+PRIMARY_MODEL = os.getenv(
+    "GROQ_MODEL",
+    "openai/gpt-oss-120b",
+)
 
 MODELS = list(
     dict.fromkeys(
         [
             PRIMARY_MODEL,
-            "gemini-3.7-flash",
-            "gemini-3.6-flash",
+            "qwen/qwen3.8-27b",
+            "openai/gpt-oss-20b",
         ]
     )
 )
@@ -62,30 +61,71 @@ Also produce:
 - health_score from 0 to 100
 - concise final_assessment
 
-Return JSON only and match the provided schema exactly.
+Do not fabricate files, dependencies, technologies, frameworks,
+functions, classes, tests, or repository facts.
 
-Do not fabricate files, dependencies, technologies, or repository facts.
+Keep the response concise and evidence-based.
+
+Maximum:
+- 4 strengths
+- 4 weaknesses
+- 5 risks
+- 5 recommendations
+- 6 issues
 """
 
 
 class AIServiceError(RuntimeError):
-    """Raised when the AI provider cannot generate a valid report."""
-
     pass
 
 
-def _is_temporary_unavailable_error(exc: Exception) -> bool:
-    """
-    Returns True when Gemini is temporarily unavailable,
-    usually because the model is under heavy demand.
-    """
+def _make_strict_schema(
+    schema: dict[str, Any],
+) -> dict[str, Any]:
+
+    schema = deepcopy(schema)
+
+    def process(value: Any) -> None:
+        if isinstance(value, dict):
+
+            if value.get("type") == "object":
+                value["additionalProperties"] = False
+
+                properties = value.get("properties")
+
+                if isinstance(properties, dict):
+                    value["required"] = list(
+                        properties.keys()
+                    )
+
+            for child in value.values():
+                process(child)
+
+        elif isinstance(value, list):
+            for child in value:
+                process(child)
+
+    process(schema)
+
+    return schema
+
+
+def _is_retryable_error(
+    exc: Exception,
+) -> bool:
 
     message = str(exc).lower()
 
     return (
-        "503" in message
+        "429" in message
+        or "rate limit" in message
+        or "rate_limit" in message
+        or "500" in message
+        or "502" in message
+        or "503" in message
+        or "504" in message
         or "unavailable" in message
-        or "high demand" in message
+        or "overloaded" in message
     )
 
 
@@ -93,16 +133,13 @@ def generate_report(
     analysis_result: dict[str, Any],
 ) -> dict[str, Any]:
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
 
     if not api_key:
         raise AIServiceError(
-            "GEMINI_API_KEY is not set. Add it to the project .env file."
+            "GROQ_API_KEY is not set. "
+            "Add it to the project .env file."
         )
-
-    client = genai.Client(
-        api_key=api_key
-    )
 
     repository_json = json.dumps(
         analysis_result,
@@ -110,34 +147,59 @@ def generate_report(
         ensure_ascii=False,
     )
 
+    if not repository_json.strip():
+        raise AIServiceError(
+            "Repository analysis is empty."
+        )
+
+    client = Groq(
+        api_key=api_key
+    )
+
+    schema = _make_strict_schema(
+        AIReport.model_json_schema()
+    )
+
     response = None
     last_error = None
 
-    # Try primary model, then fallback models
     for model in MODELS:
 
         try:
             logger.info(
-                "Trying Gemini model: %s",
-                model
+                "Trying Groq model: %s",
+                model,
             )
 
-            response = client.models.generate_content(
-                model=model,
-                contents=[
-                    SYSTEM_PROMPT,
-                    "Repository evidence:",
-                    repository_json,
-                ],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_json_schema=AIReport.model_json_schema(),
-                ),
+            response = (
+                client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": (
+                                SYSTEM_PROMPT
+                                + "\n\n"
+                                + "Repository evidence:\n"
+                                + repository_json
+                            ),
+                        }
+                    ],
+                    reasoning_effort="low",
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "codescope_ai_report",
+                            "strict": True,
+                            "schema": schema,
+                        },
+                    },
+                )
             )
 
             logger.info(
-                "Gemini model succeeded: %s",
-                model
+                "Groq model succeeded: %s",
+                model,
             )
 
             break
@@ -146,66 +208,87 @@ def generate_report(
             last_error = exc
 
             logger.warning(
-                "Gemini model %s failed: %s",
+                "Groq model %s failed: %s",
                 model,
                 exc,
             )
 
-            # Only fallback when Gemini is temporarily unavailable
-            if _is_temporary_unavailable_error(exc):
+            if _is_retryable_error(exc):
                 continue
 
-            # Authentication, invalid request, etc.
             logger.exception(
-                "Gemini request failed"
+                "Groq request failed"
             )
 
             raise AIServiceError(
                 "The AI provider request failed."
             ) from exc
 
-    # Every model failed
     if response is None:
-
         logger.error(
-            "All configured Gemini models failed."
+            "All configured Groq models failed."
         )
 
         raise AIServiceError(
-            "All Gemini models are currently unavailable."
+            "All AI models are currently unavailable."
         ) from last_error
 
-    # Empty response
-    if not response.text:
+    try:
+        content = (
+            response
+            .choices[0]
+            .message
+            .content
+        )
+
+    except Exception as exc:
+        raise AIServiceError(
+            "The AI provider returned "
+            "an unexpected response."
+        ) from exc
+
+    if not content:
+        raise AIServiceError(
+            "The AI provider returned "
+            "an empty response."
+        )
+
+    try:
+        data = json.loads(content)
+
+        report = AIReport.model_validate(
+            data
+        )
+
+    except json.JSONDecodeError as exc:
+        logger.exception(
+            "Groq returned invalid JSON."
+        )
 
         raise AIServiceError(
-            "Gemini returned an empty response."
-        )
-
-    # Validate Gemini JSON against AIReport
-    try:
-        report = AIReport.model_validate_json(
-            response.text
-        )
+            "The AI provider returned "
+            "invalid JSON."
+        ) from exc
 
     except ValidationError as exc:
-
         logger.exception(
-            "Gemini returned JSON that does not match AIReport."
+            "Groq response does not "
+            "match AIReport."
         )
 
         raise AIServiceError(
-            "The AI provider returned an invalid response."
+            "The AI provider returned "
+            "an invalid response."
         ) from exc
 
     except Exception as exc:
-
         logger.exception(
-            "Failed to parse Gemini response."
+            "Failed to parse Groq response."
         )
 
         raise AIServiceError(
-            "The AI provider returned an invalid response."
+            "The AI provider returned "
+            "an invalid response."
         ) from exc
 
     return report.model_dump()

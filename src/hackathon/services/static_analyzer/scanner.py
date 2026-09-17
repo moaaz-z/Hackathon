@@ -13,15 +13,33 @@ from hackathon.services.static_analyzer.models import FileInfo
 
 
 def _is_ignored_dir(name: str) -> bool:
-    return name in IGNORED_DIR_NAMES or name.endswith(IGNORED_DIR_SUFFIXES)
+    return (
+        name in IGNORED_DIR_NAMES
+        or name.endswith(IGNORED_DIR_SUFFIXES)
+    )
 
 
-def _read_text(absolute_path: str) -> str | None:
+def _read_text(
+    absolute_path: str,
+) -> str | None:
     try:
-        with open(absolute_path, encoding="utf-8", errors="ignore") as f:
+        with open(
+            absolute_path,
+            encoding="utf-8",
+            errors="ignore",
+        ) as f:
             return f.read()
     except OSError:
         return None
+
+
+def _count_lines(
+    content: str | None,
+) -> int:
+    if content is None or content == "":
+        return 0
+
+    return len(content.splitlines())
 
 
 class ScanResult:
@@ -32,38 +50,70 @@ class ScanResult:
         self.config_files: list[str] = []
 
 
-def scan_repository(repo_path: str) -> ScanResult:
+def scan_repository(
+    repo_path: str,
+) -> ScanResult:
     result = ScanResult()
 
     for root, dirnames, filenames in os.walk(repo_path):
-        dirnames[:] = sorted(d for d in dirnames if not _is_ignored_dir(d))
+        dirnames[:] = sorted(
+            directory
+            for directory in dirnames
+            if not _is_ignored_dir(directory)
+        )
+
         result.directory_count += len(dirnames)
 
         for filename in sorted(filenames):
-            absolute_path = os.path.join(root, filename)
-            relative_path = os.path.relpath(absolute_path, repo_path).replace(os.sep, "/")
+            absolute_path = os.path.join(
+                root,
+                filename,
+            )
+
+            relative_path = os.path.relpath(
+                absolute_path,
+                repo_path,
+            ).replace(os.sep, "/")
 
             if filename in SKIPPED_FILENAMES:
                 continue
 
-            extension = os.path.splitext(filename)[1].lower()
+            extension = os.path.splitext(
+                filename
+            )[1].lower()
+
             if extension in SKIPPED_EXTENSIONS:
                 continue
 
-            if filename in README_FILENAMES and result.readme_path is None:
+            if (
+                filename in README_FILENAMES
+                and result.readme_path is None
+            ):
                 result.readme_path = relative_path
 
             if filename in CONFIG_FILENAMES:
-                result.config_files.append(relative_path)
+                result.config_files.append(
+                    relative_path
+                )
 
             try:
-                size_bytes = os.path.getsize(absolute_path)
+                size_bytes = os.path.getsize(
+                    absolute_path
+                )
             except OSError:
                 continue
 
-            language = LANGUAGE_BY_EXTENSION.get(extension)
-            content = _read_text(absolute_path)
-            loc = content.count("\n") + 1 if content else 0
+            language = LANGUAGE_BY_EXTENSION.get(
+                extension
+            )
+
+            content = _read_text(
+                absolute_path
+            )
+
+            loc = _count_lines(
+                content
+            )
 
             result.files.append(
                 FileInfo(

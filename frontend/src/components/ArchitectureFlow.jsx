@@ -1,127 +1,253 @@
 import {
-  ArrowRight,
-  Boxes,
+  ArrowDown,
+  BarChart3,
   Database,
-  Globe2,
+  FileSpreadsheet,
+  NotebookTabs,
   ServerCog,
-  Workflow,
+  Boxes,
 } from "lucide-react";
 
-function getSteps(architecture) {
-  if (Array.isArray(architecture)) {
-    return architecture;
-  }
-
-  if (Array.isArray(architecture?.flow) && architecture.flow.length) {
-    return architecture.flow;
-  }
-
-  if (Array.isArray(architecture?.layers) && architecture.layers.length) {
-    return architecture.layers;
-  }
-
+function getArchitectureSteps(architecture = {}) {
   const description =
-    architecture?.description ||
-    architecture?.type ||
-    architecture?.pattern ||
-    "";
+    typeof architecture === "string"
+      ? architecture
+      : architecture?.description || "";
 
-  if (description) {
-    const normalized = description
-      .replace(/[→>-]/g, "|")
-      .split("|")
-      .map((item) => item.trim())
-      .filter(Boolean);
+  const text = description.toLowerCase();
 
-    if (normalized.length >= 2 && normalized.length <= 8) {
-      return normalized;
+  // Data / analytics project
+  if (
+    text.includes("csv") ||
+    text.includes("data file") ||
+    text.includes("notebook") ||
+    text.includes("analytics") ||
+    text.includes("sql")
+  ) {
+    const steps = [];
+
+    if (
+      text.includes("csv") ||
+      text.includes("data file")
+    ) {
+      steps.push({
+        title: "Data Source",
+        subtitle: "Repository data files",
+        icon: "data",
+      });
     }
+
+    if (
+      text.includes("notebook") ||
+      text.includes("jupyter")
+    ) {
+      steps.push({
+        title: "Notebook Analysis",
+        subtitle: "Interactive exploration",
+        icon: "notebook",
+      });
+    }
+
+    if (text.includes("sql")) {
+      steps.push({
+        title: "SQL Queries",
+        subtitle: "Structured data analysis",
+        icon: "database",
+      });
+    }
+
+    steps.push({
+      title: "Insights / Output",
+      subtitle: "Analysis results",
+      icon: "chart",
+    });
+
+    return steps;
   }
 
-  return ["Entry / Interface", "Application Logic", "Core Services", "Data / Storage"];
+  // API / backend project
+  if (
+    text.includes("api") ||
+    text.includes("backend") ||
+    text.includes("service")
+  ) {
+    return [
+      {
+        title: "Interface",
+        subtitle: "User or client requests",
+        icon: "interface",
+      },
+      {
+        title: "Application Layer",
+        subtitle: "Business logic",
+        icon: "service",
+      },
+      {
+        title: "Core Services",
+        subtitle: "Processing and orchestration",
+        icon: "service",
+      },
+      {
+        title: "Data Layer",
+        subtitle: "Persistence or external data",
+        icon: "database",
+      },
+    ];
+  }
+
+  // General project
+  return [
+    {
+      title: "Entry Point",
+      subtitle: "Application start",
+      icon: "interface",
+    },
+    {
+      title: "Core Logic",
+      subtitle: "Main project behavior",
+      icon: "service",
+    },
+    {
+      title: "Supporting Modules",
+      subtitle: "Utilities and components",
+      icon: "boxes",
+    },
+    {
+      title: "Output",
+      subtitle: "Project result",
+      icon: "chart",
+    },
+  ];
 }
 
-function iconForStep(step, index) {
-  const value = String(step).toLowerCase();
-
-  if (
-    value.includes("frontend") ||
-    value.includes("client") ||
-    value.includes("ui") ||
-    value.includes("interface")
-  ) {
-    return <Globe2 size={20} />;
-  }
-
-  if (
-    value.includes("database") ||
-    value.includes("storage") ||
-    value.includes("data")
-  ) {
-    return <Database size={20} />;
-  }
-
-  if (
-    value.includes("service") ||
-    value.includes("backend") ||
-    value.includes("server") ||
-    value.includes("api")
-  ) {
-    return <ServerCog size={20} />;
-  }
-
-  return index === 0 ? <Boxes size={20} /> : <Workflow size={20} />;
-}
-
-export default function ArchitectureFlow({ architecture = {} }) {
-  const steps = getSteps(architecture);
-
-  const pattern =
-    architecture?.type ||
-    architecture?.pattern ||
-    (typeof architecture === "string" ? architecture : "");
-
+function getArchitectureType(architecture = {}) {
   const description =
-    typeof architecture === "object"
-      ? architecture?.description || ""
-      : "";
+    typeof architecture === "string"
+      ? architecture
+      : architecture?.description || "";
+
+  const text = description.toLowerCase();
+
+  if (
+    text.includes("notebook") ||
+    text.includes("analytics") ||
+    text.includes("csv")
+  ) {
+    return "Data Analytics";
+  }
+
+  if (
+    text.includes("api") ||
+    text.includes("backend")
+  ) {
+    return "Service Architecture";
+  }
+
+  if (text.includes("script")) {
+    return "Script-Based";
+  }
+
+  if (text.includes("package")) {
+    return "Modular Package";
+  }
+
+  return "Repository Structure";
+}
+
+function StepIcon({ type }) {
+  const props = {
+    size: 20,
+    strokeWidth: 1.8,
+  };
+
+  switch (type) {
+    case "data":
+      return <FileSpreadsheet {...props} />;
+
+    case "notebook":
+      return <NotebookTabs {...props} />;
+
+    case "database":
+      return <Database {...props} />;
+
+    case "chart":
+      return <BarChart3 {...props} />;
+
+    case "service":
+      return <ServerCog {...props} />;
+
+    case "boxes":
+      return <Boxes {...props} />;
+
+    default:
+      return <Boxes {...props} />;
+  }
+}
+
+export default function ArchitectureFlow({
+  architecture = {},
+}) {
+  const description =
+    typeof architecture === "string"
+      ? architecture
+      : architecture?.description || "";
+
+  const steps =
+    getArchitectureSteps(architecture);
+
+  const architectureType =
+    getArchitectureType(architecture);
 
   return (
     <section className="panel architecture-panel wide-panel">
       <div className="architecture-header">
         <div className="section-heading">
-          <span className="eyebrow">Project architecture</span>
-          <h2>How the codebase is structured</h2>
+          <span className="eyebrow">
+            Project architecture
+          </span>
+
+          <h2>
+            How the codebase is structured
+          </h2>
         </div>
 
-        {pattern && (
-          <span className="architecture-pattern">
-            {pattern}
-          </span>
-        )}
+        <span className="architecture-pattern">
+          {architectureType}
+        </span>
       </div>
 
-      <div className="architecture-flow">
+      <div className="architecture-flow-vertical">
         {steps.map((step, index) => (
-          <div className="architecture-step" key={`${step}-${index}`}>
-            <div className="architecture-node">
-              <div className="architecture-icon">
-                {iconForStep(step, index)}
+          <div
+            className="architecture-flow-item"
+            key={`${step.title}-${index}`}
+          >
+            <div className="architecture-node-clean">
+              <div className="architecture-node-icon">
+                <StepIcon type={step.icon} />
               </div>
 
-              <div>
-                <span className="architecture-index">
-                  Step {index + 1}
+              <div className="architecture-node-content">
+                <span className="architecture-step-label">
+                  Stage {index + 1}
                 </span>
 
-                <strong>{String(step)}</strong>
+                <strong>
+                  {step.title}
+                </strong>
+
+                <small>
+                  {step.subtitle}
+                </small>
               </div>
             </div>
 
             {index < steps.length - 1 && (
-              <div className="architecture-connector">
-                <div className="connector-line" />
-                <ArrowRight size={18} />
+              <div className="architecture-arrow">
+                <ArrowDown
+                  size={18}
+                  strokeWidth={1.7}
+                />
               </div>
             )}
           </div>
@@ -131,6 +257,7 @@ export default function ArchitectureFlow({ architecture = {} }) {
       {description && (
         <div className="architecture-note">
           <span>Architecture note</span>
+
           <p>{description}</p>
         </div>
       )}
